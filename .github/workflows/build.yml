@@ -1,0 +1,72 @@
+name: Build APK and unsigned IPA
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate android/ios folders (keeps my lib + pubspec)
+        run: |
+          mkdir -p /tmp/keep && cp -r lib pubspec.yaml /tmp/keep/
+          flutter create . --platforms=android,ios --org com.menhar --project-name malaikat_ni_allah
+          rm -rf lib && cp -r /tmp/keep/lib lib
+          cp /tmp/keep/pubspec.yaml pubspec.yaml
+          rm -rf test
+          sed -i 's/android:label="[^"]*"/android:label="Mga Malaikat ni Allah"/' android/app/src/main/AndroidManifest.xml
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: malaikat-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate android/ios folders (keeps my lib + pubspec)
+        run: |
+          mkdir -p /tmp/keep && cp -r lib pubspec.yaml /tmp/keep/
+          flutter create . --platforms=android,ios --org com.menhar --project-name malaikat_ni_allah
+          rm -rf lib && cp -r /tmp/keep/lib lib
+          cp /tmp/keep/pubspec.yaml pubspec.yaml
+          rm -rf test
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Mga Malaikat ni Allah'" ios/Runner/Info.plist
+
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -qr malaikat-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: malaikat-unsigned-ipa
+          path: malaikat-unsigned.ipa
